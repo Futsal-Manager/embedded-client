@@ -3,8 +3,8 @@
 *
 *  File Name : main.c
 *  Author    : B W KANG
-*  Version   : Ver 1.0
-*  Date      : 2017.02.09
+*  Version   : Ver 1.1
+*  Date      : 2017.02.15
 *
 */
 
@@ -12,10 +12,8 @@
 #include<stdio.h>
 #include"delay.h"
 
-
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-//                       Using for printf in UART                       //
+////////////////////////////////////////////////////////////////////////////////
+//                       Using for printf in UART                             //
 
 // USART_1 & printf 관련 define
 #ifdef __GNUC__
@@ -45,8 +43,13 @@ PUTCHAR_PROTOTYPE
 
     return ascii; 
 }
-//                                                                      //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
 //////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//                               Main                                   //
 
 void Rcc_Initialize(void);
 void Gpio_Initialize(void);
@@ -55,26 +58,82 @@ void UART1_Initialize(void);
 void USART1_IRQHandler(void);
 void UART2_Initialize(void);
 void USART2_IRQHandler(void);
+void TIM2_Initialize(void);
+void TIM2_IRQHandler(void);
 void UART4_Initialize(void);
 void USART4_IRQHandler(void);
+//func======================
 
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-//                               Main                                   //
+void Timer2_Delay(u16 Delay);
 
+//Motor_Position
+void position_150(void);
+void ID_setting_to_01(void);
+void ID_setting_to_02(void);
+void NO_Status_return(void);
+void X_position_60(void);
+void X_position(unsigned int Angle);
+void X_position_2(unsigned int Angle,unsigned int RPM);
+
+//==========================
+/*
+첫번째 모터 
+ 아이디 : 1
+ 제한각 : 105 ~ 195 
+ 
+두번째 모터 
+ 아이디 : 2
+ 제한각 : 60 ~ 180 
+*/
 void main(void)
-{
+{  
   Rcc_Initialize();
   Gpio_Initialize();
+  Nvic_Initialize();
+  UART1_Initialize();
+  UART2_Initialize();
+  TIM2_Initialize();
+  UART4_Initialize();
+  
+   //USART_SendData(USART2,0x41); //'A'
+   Delay_ms(1000);
+   X_position(150);  // Stand UP
+   
+  
   
   while(1)
   {
- 
+    /*
+     Delay_ms(1000);
+     X_position_2(60,30);
+     
+     Delay_ms(1000);
+     X_position_2(120,30);
+     
+     Delay_ms(1000);
+     X_position_2(180,30);
+     
+     Delay_ms(1000);
+     X_position_2(120,30);
+    */
+    
+    for(int i=60;i<180;i+=5)
+    {
+      Delay_ms(300);
+      X_position_2(i,3);
+    }
+    
+    for(int i=180;i>60;i-=5)
+    {
+      Delay_ms(300);
+      X_position_2(i,3);
+    }
   }
 }
 
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
+
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -102,13 +161,12 @@ void Rcc_Initialize(void)
   }
   
  
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE); //GPIO A
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE); //GPIO C 
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1,ENABLE);//FB 블루투스 UART1 clock허용.
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2,ENABLE);//HC-06 UART2 clock 허용 
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE); //GPIO A 
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1,ENABLE);// FB 블루투스 UART1 clock허용.
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2,ENABLE);// 타이머2 클럭허용 (Delay)
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2,ENABLE);// HC 블루투스 UART2 clock 허용 
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4,ENABLE);// 서보모터  UART4 clock 허용
- 
-
 
 }
 
@@ -117,23 +175,18 @@ void Rcc_Initialize(void)
 //////////////////////////////////////////////////////////////////////////
 
 
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-//                          GPIO Setting                                //
-	
 void Gpio_Initialize(void)
 {
    GPIO_InitTypeDef GPIO_InitStructure;
    
-   
    //FB 블루투스 TX
-   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;//핀 9추가 
+   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
    GPIO_Init(GPIOA, &GPIO_InitStructure);
    
    //FB 블루투스 RX
-   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;//핀 10추가 
+   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
    GPIO_Init(GPIOA, &GPIO_InitStructure);
    
@@ -149,7 +202,6 @@ void Gpio_Initialize(void)
    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
    GPIO_Init(GPIOA, &GPIO_InitStructure);
    
-   
    //서보모터  TX 
    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -160,6 +212,7 @@ void Gpio_Initialize(void)
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
 
+
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 //                          NVIC Setting                                //
@@ -169,21 +222,29 @@ void Nvic_Initialize(void)
    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
    
    //USART1_IRQ enable
-   NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn ;
+   NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn ;  //FB
    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0; 
    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0; 
    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
    NVIC_Init(&NVIC_InitStructure);
    
-   //USART2_IRQn enable
-   NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn; //enable the USART2 Interrupt
+    //TIM2_IRQn enable
+   NVIC_InitStructure.NVIC_IRQChannel = TIM2_IRQn;     //Delay
    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
    NVIC_Init(&NVIC_InitStructure);
-
+   
+    //USART2_IRQn enable
+   NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;  //HC
+   NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+   NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+   NVIC_Init(&NVIC_InitStructure);
+   
+   
    //USART4_IRQn enable
-   NVIC_InitStructure.NVIC_IRQChannel = UART4_IRQn; //enable the USART4 Interrupt
+   NVIC_InitStructure.NVIC_IRQChannel = UART4_IRQn;  //Servo
    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
@@ -205,7 +266,7 @@ void UART1_Initialize(void){ //PCLK2를 사용한다.
    NVIC_InitTypeDef NVIC_InitStructure;
    
    
-   USART_InitStructure.USART_BaudRate = 9600; 
+   USART_InitStructure.USART_BaudRate = 19200; 
    // baud rate= 데이터 통신에서 직렬 전송의 변조 속도를 1초간에 전송되는 신호의 수로 나타낸 값.
    
    USART_InitStructure.USART_WordLength = USART_WordLength_8b;
@@ -285,18 +346,16 @@ void USART1_IRQHandler(void)
 //////////////////////////////////////////////////////////////////////////
 
 
-
-
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 //                            UART2 Setting                             //
 
 
-void UART2_Initialize(void)//HC-06 블루투스
+void UART2_Initialize(void)//HC 블루투스 
 {
  
    USART_InitTypeDef USART_InitStructure;
-   USART_InitStructure.USART_BaudRate = 19200 ;
+   USART_InitStructure.USART_BaudRate = 9600 ;
    USART_InitStructure.USART_WordLength = USART_WordLength_8b;
    USART_InitStructure.USART_StopBits = USART_StopBits_1;
    USART_InitStructure.USART_Parity = USART_Parity_No;
@@ -314,28 +373,101 @@ void UART2_Initialize(void)//HC-06 블루투스
 //                             UART2 Handler                            //
 
 void USART2_IRQHandler(void)
+
 {
-   volatile char temp;
+   volatile char USART2_Temp =0;
   
    if(USART_GetITStatus(USART2, USART_IT_RXNE) != RESET)
    {
       USART_ClearITPendingBit(USART2, USART_IT_RXNE);
       //printf("%c",USART_ReceiveData(USART2));
       
-      temp = USART_ReceiveData(USART2);
+      USART2_Temp = USART_ReceiveData(USART2);
+      
+      if(USART2_Temp == 0x41)
+      {
+        position_150();
+        Delay_ms(1000);
+      }
+      
       
    }
-   
 }
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
+//                             TIM_2 Settings                           //
+
+
+void TIM2_Initialize(void) //0.1ms
+{   
+   
+   TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
+
+   TIM_TimeBaseStructure.TIM_Period = 99; //1~65535  
+   TIM_TimeBaseStructure.TIM_Prescaler = 35;     
+   //시간 계산 법 = 36MHZ 공급받는다.36000,000  x 1/period  x 1/prescaler  [1200, 300=   10ms]
+   TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;
+   TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
+   TIM_TimeBaseInit(TIM2, &TIM_TimeBaseStructure);
+
+  
+   TIM_ITConfig(TIM2, TIM_IT_Update, DISABLE); //TIM enable
+   TIM_Cmd(TIM2, DISABLE); //TIM2 enable
+
+}
+
+//                                                                      //
+//////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//                             TIM_2 Handler                            //
+
+
+
+void TIM2_IRQHandler(void) //per 0.1s
+{
+ 
+  TIM_ClearFlag(TIM2, TIM_FLAG_Update);               // 타이머 리셋
+  a++;                                      //타이머 카운트 증가시킨다.
+  TIM_ClearITPendingBit(TIM2, TIM_IT_Update);         //인터럽트 리셋
+}
+
+//                                                                      //
+//////////////////////////////////////////////////////////////////////////
+
+//(Packet Delay) TIM2 Delay 함수------------------------------------------------
+
+void Timer2_Delay(u16 Delay)
+{
+   
+
+  a=0;
+   TIM_ITConfig(TIM2,TIM_IT_Update, ENABLE);
+   TIM_Cmd(TIM2, ENABLE);
+ 
+   while(1)
+   {
+     if(a>Delay) break;
+      //printf("T\n");
+   }
+ 
+   TIM_ITConfig(TIM2, TIM_IT_Update, DISABLE);
+   TIM_Cmd(TIM2, DISABLE);
+
+}
+
+//------------------------------------------------------------------------------
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
 //                            UART4 Setting                             //
 
 
-void UART4_Initialize(void)//레이저 거리센서(뒤)
+void UART4_Initialize(void)// servo motor
 {
  
     USART_InitTypeDef USART_InitStructure;
@@ -364,4 +496,256 @@ void USART4_IRQHandler(void)
 
 //                                                                      //
 //////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////
+//                          모터 제어 함수                              // 
+/*
+30RPM =0x10D
+114RPM = 0x3ff = 1023
+
+Position 150 = 0x1ff
+Position 300 = 0x3ff
+
+*/
+
+void position_150(void) // center 150 150
+{
+   //전체를  RPM30(269)속도로 150도 에 위치 시킨다.
+ 
+ 
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //ID
+  USART_SendData(UART4,0xFE);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //LENGTH 
+  USART_SendData(UART4,0x07);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //INSTRUCTION   DATA_WRITE
+  USART_SendData(UART4,0x03);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //PARAMETERS  GOAL_POSITON
+  USART_SendData(UART4,0x1E);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //PARAMETERS
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //PARAMETERS  
+  USART_SendData(UART4,0x01);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  //PARAMETERS
+  USART_SendData(UART4,0x0D);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  //PARAMETERS
+  USART_SendData(UART4,0x01);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+
+  //CHECKSUM
+  USART_SendData(UART4,0xCB);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+}
+
+//--------------------------- 
+
+void X_position_60(void)
+{
+  unsigned char Table[18]={0xFF,0xFF,0xFE,0x0E,0x83,0x1E,0x04,0x01,0xFF,0x01,0x0D,0x01,0x02,0xCD,0x00,0x0D,0x01,0};
+  unsigned char sum=0;
+  unsigned char check_sum = 0;
+  for(int i=0;i<17;i++)
+  {
+    USART_SendData(UART4,Table[i]);
+    while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+    
+    if (i > 1)
+      sum += Table[i];  
+  }
+  check_sum = ~sum;  
+  
+  USART_SendData(UART4,check_sum);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+    
+}
+
+//-----------------------------------------------------------------------------
+
+void X_position(unsigned int Angle)
+{
+  unsigned char sum=0;
+  unsigned char check_sum = 0;
+  unsigned char Angle_FO =0;
+  unsigned char Angle_BA =0;
+  
+  unsigned int temp = 1024 * Angle / 300;
+  Angle_FO = (unsigned char)(temp / 255);
+  Angle_BA = (unsigned char)temp;
+  
+  unsigned char Table[18]={0xFF,0xFF,0xFE,0x0E,0x83,0x1E,0x04,0x01,0xFF,0x01,0x0D,0x01,0x02,Angle_BA,Angle_FO,0x0D,0x01,0};
+  
+  for(int i=0;i<17;i++)
+  {
+    USART_SendData(UART4,Table[i]);
+    while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+    
+    if (i > 1)
+      sum += Table[i];  
+  }
+  check_sum = ~sum; 
+  
+  USART_SendData(UART4,check_sum);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+}
+
+//--------------------------------------------------------------------------
+
+
+void X_position_2(unsigned int Angle,unsigned int RPM)
+{
+  unsigned char sum=0;
+  unsigned char check_sum = 0;
+  unsigned char Angle_FO =0;
+  unsigned char Angle_BA =0;
+  unsigned char RPM_FO =0;
+  unsigned char RPM_BA =0;
+  
+  unsigned int temp = 1024 * Angle / 300;
+  Angle_FO = (unsigned char)(temp / 255);
+  Angle_BA = (unsigned char)temp;
+  
+  unsigned int temp_rp = 1024 * RPM / 114;
+  RPM_FO = (unsigned char)(temp_rp / 255);
+  RPM_BA = (unsigned char)(temp_rp);
+  
+  unsigned char Table[18]={0xFF,0xFF,0xFE,0x0E,0x83,0x1E,0x04,0x01,0xFF,0x01,RPM_BA,RPM_FO,0x02,Angle_BA,Angle_FO,RPM_BA,RPM_FO,0};
+  
+  for(int i=0;i<17;i++)
+  {
+    USART_SendData(UART4,Table[i]);
+    while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+    
+    if (i > 1)
+      sum += Table[i];  
+  }
+  check_sum = ~sum; 
+  
+  USART_SendData(UART4,check_sum);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  
+}
+
+
+//=========================================================================
+void ID_setting_to_01(void)
+{
+  //전체 ID 를 1로 설정한다.
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //ID
+  USART_SendData(UART4,0xFE);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Length
+  USART_SendData(UART4,0x04);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Write
+  USART_SendData(UART4,0x03);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Motor_ID_Adress
+  USART_SendData(UART4,0x03);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Motor_ID
+  USART_SendData(UART4,0x01);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);  
+  
+  //C S
+  USART_SendData(UART4,0xF6);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+ 
+}
+
+//----------------------------------
+void ID_setting_to_02(void)
+{
+  //전체 ID 를 2로 설정한다.
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //ID
+  USART_SendData(UART4,0xFE);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Length
+  USART_SendData(UART4,0x04);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Write
+  USART_SendData(UART4,0x03);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Motor_ID_Adress
+  USART_SendData(UART4,0x03);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Motor_ID
+  USART_SendData(UART4,0x02);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);  
+  
+  //C S
+  USART_SendData(UART4,0xF5);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+ 
+}
+//------------------------
+
+void NO_Status_return(void)
+{
+  //status rturn 받지 않게 한다 
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  USART_SendData(UART4,0xFF);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //ID
+  USART_SendData(UART4,0xFE);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Length
+  USART_SendData(UART4,0x04);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //Write
+  USART_SendData(UART4,0x03);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //STATUS_ID_Adress
+  USART_SendData(UART4,0x10);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+  
+  //false
+  USART_SendData(UART4,0x00);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);  
+  
+  //C S
+  USART_SendData(UART4,0xEB);
+  while(USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET);
+ 
+}
 
