@@ -15,3 +15,4 @@ https://github.com/Futsal-Manager/embedded-client.git
 2) Status return level 설정, false값 설정, Half duplex type을 사용하지 않음.(속도 저하, 불필요)
 3) Motor ID 설정 Y축 :01 X축:02
 4) Angle값, RPM값 을 인자로 받아 자동 패킷 생성 함수 작성(각도, RPM 입력만으로 모터 제어가능)
+
